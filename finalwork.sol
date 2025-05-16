@@ -28,12 +28,15 @@ contract DecentralizedCarRental {
     }
 
     struct RentalInfo {
-        address renter;
-        uint256 startTimestamp;
-        uint256 endTimestamp;
-        uint256 ftotalCost;
-        bool isActive;
-    }
+    address renter;
+    uint256 startTimestamp;
+    uint256 endTimestamp;
+    uint256 ftotalCost;
+    bool isActive;
+    bool renterConfirmed;
+    bool ownerConfirmed;
+    bool extraFeePaid;
+}
 
     mapping(uint256 => Car) public cars;       // 車輛資料
     mapping(uint256 => RentalInfo) public rentals;  // 租借紀錄
@@ -43,7 +46,9 @@ contract DecentralizedCarRental {
     event CarListed(uint256 carId, address indexed owner, string model, string plate, uint256 pricePerHour);
     event CarAvailabilityUpdated(uint256 carId, bool isOnline);
     event CarRented(uint256 carId, address indexed renter,uint256 rentstart, uint256 rentend, uint256 totalCost);
+    event RentalStart(uint256 carId, address indexed renter);
     event RentalEnded(uint256 carId, address indexed renter);
+    event ExtraCharged(uint256 carId, address renter, uint256 extraHours, uint256 extraCost);
 
     // -------------------
     // 車主功能
@@ -96,7 +101,7 @@ contract DecentralizedCarRental {
         Car storage car = cars[_carId];
         require(car.isOnline, "Car is not available");
         require(car.owner != msg.sender, "Owner cannot rent own car");
-        require(totalCost > car.pricePerHour, "Must rent for at least 1 hour");
+        require(totalCost >= car.pricePerHour, "Must rent for at least 1 hour");
         require(car.fdcanstart<=rentstart, "car can not be rented");
         require(car.ldcanstart>=rentend, "over the last day can rent");
 
@@ -109,28 +114,73 @@ contract DecentralizedCarRental {
             startTimestamp: rentstart,
             endTimestamp: rentend,
             ftotalCost: totalCost,
-            isActive: false
+            isActive: false,
+            renterConfirmed:false,
+            ownerConfirmed:false,
+            extraFeePaid:false
         });
 
         emit CarRented(_carId, msg.sender,rentstart, rentend, totalCost);
     }
 
-    /// 車主或租客結束租借
-    function endRental(uint256 _carId) external {
-        RentalInfo storage rent = rentals[_carId];
-        Car storage car = cars[_carId];
+    /// 車主或租客雙方確認開始租借
+    function startRental(uint256 _carId) external {
+    RentalInfo storage rent = rentals[_carId];
+    Car storage car = cars[_carId];
 
-        require(rent.isActive, "No active rental");
-        require(
-            msg.sender == car.owner || msg.sender == rent.renter,
-            "Only renter or owner can end rental"
-        );
+    require(
+        msg.sender == car.owner || msg.sender == rent.renter,
+        "Only renter or owner can confirm start"
+    );
 
-        // 結束租借
+        // 各自紀錄確認狀態
+    if (msg.sender == rent.renter) {
+        rent.renterConfirmed = true;
+    } else if (msg.sender == car.owner) {
+        rent.ownerConfirmed = true;
+    }
+
+        // 當雙方都確認，正式開始租借
+    if (rent.renterConfirmed && rent.ownerConfirmed) {
+        rent.isActive = true;
+        emit RentalStart(_carId, rent.renter);
+    }
+}
+
+    //結束租約且確認是否收取超時費用
+    function endRental(uint256 _carId, uint256 overtimeHours) external {
+    RentalInfo storage rent = rentals[_carId];
+    Car storage car = cars[_carId];
+
+    require(
+        msg.sender == car.owner || msg.sender == rent.renter,
+        "Only renter or owner can confirm return"
+    );
+    require(rent.isActive, "No active rental");
+
+        // 如果有超時且未付款，要求付款
+    if (overtimeHours > 0 && !rent.extraFeePaid) {
+        require(msg.sender == rent.renter, "Only renter can pay extra fee");
+        uint256 extraCost = overtimeHours * car.pricePerHour;
+        require(token.transferFrom(rent.renter, car.owner, extraCost), "Extra fee transfer failed");
+        rent.ftotalCost += extraCost;
+        rent.extraFeePaid = true;
+        emit ExtraCharged(_carId, rent.renter, overtimeHours, extraCost);
+    }
+
+        // 記錄雙方按確認
+    if (msg.sender == rent.renter) {
+        rent.renterConfirmed = false;
+    } else if (msg.sender == car.owner) {
+        rent.ownerConfirmed = false;
+    }
+
+    if (!rent.renterConfirmed && !rent.ownerConfirmed && rent.extraFeePaid) {
         rent.isActive = false;
-
         emit RentalEnded(_carId, rent.renter);
     }
+}
+
 
     // 查詢功能
 
