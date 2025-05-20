@@ -157,16 +157,22 @@ contract DecentralizedCarRental {
         );
         require(rent.isActive, "No active rental");
 
+        if (!rent.extraFeePaid) {
+        require(msg.sender == rent.renter, "Renter need to pay");
+        }
+        
         // 未超時即設定為已付款
         if (overtimeHours == 0) {
             rent.extraFeePaid = true;
+            if (msg.value > 0) {
+            payable(msg.sender).transfer(msg.value);
+        }
         }
 
         // 如果有超時且未付款，要求付款
         if (overtimeHours > 0 && !rent.extraFeePaid) {
             uint256 extraCost = overtimeHours * car.pricePerHour;
             require(msg.value >= extraCost, "Insufficient ETH for overtime");
-
             // 如果付超過，退還
             uint256 refund = msg.value - extraCost;
             if (refund > 0) {
