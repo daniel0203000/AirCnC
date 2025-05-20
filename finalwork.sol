@@ -158,9 +158,13 @@ contract DecentralizedCarRental {
     );
     require(rent.isActive, "No active rental");
 
+    //未超時即設定為已付款
+    if(overtimeHours == 0){
+        rent.extraFeePaid = true;
+    }
+
         // 如果有超時且未付款，要求付款
     if (overtimeHours > 0 && !rent.extraFeePaid) {
-        require(msg.sender == rent.renter, "Only renter can pay extra fee");
         uint256 extraCost = overtimeHours * car.pricePerHour;
         require(token.transferFrom(rent.renter, car.owner, extraCost), "Extra fee transfer failed");
         rent.ftotalCost += extraCost;
