@@ -16,6 +16,7 @@ contract DecentralizedCarRental {
         uint256 fdcanstart;
         uint256 ldcanstart;
         bool isOnline;
+        string imageURL;
     }
 
     struct RentalInfo {
@@ -47,35 +48,38 @@ contract DecentralizedCarRental {
 
     /// 車主上架車輛
     function addCar(
-        bool _isscooter,
-        string memory _locate,
-        string memory _model,
-        string memory _plate,
-        uint256 _pricePerHour,
-        uint256 _fdcanstart,
-        uint256 _ldcanstart
-    ) external {
-        require(_pricePerHour > 0, "Price must be greater than zero");
-        require(_ldcanstart > _fdcanstart, "lastday must be after firstday");
+    bool _isscooter,
+    string memory _locate,
+    string memory _model,
+    string memory _plate,
+    uint256 _pricePerHour,
+    uint256 _fdcanstart,
+    uint256 _ldcanstart,
+    string memory _imageURL // 新增的參數
+) external {
+    require(_pricePerHour > 0, "Price must be greater than zero");
+    require(_ldcanstart > _fdcanstart, "lastday must be after firstday");
 
-        cars[nextCarId] = Car({
-            carId: nextCarId,
-            isscooter: _isscooter,
-            owner: payable(msg.sender),
-            locate: _locate,
-            model: _model,
-            plate: _plate,
-            fdcanstart: _fdcanstart,
-            ldcanstart: _ldcanstart,
-            pricePerHour: _pricePerHour,
-            isOnline: true
-        });
+    cars[nextCarId] = Car({
+        carId: nextCarId,
+        isscooter: _isscooter,
+        owner: payable(msg.sender),
+        locate: _locate,
+        model: _model,
+        plate: _plate,
+        fdcanstart: _fdcanstart,
+        ldcanstart: _ldcanstart,
+        pricePerHour: _pricePerHour,
+        isOnline: true,
+        imageURL: _imageURL // 儲存圖片網址
+    });
 
-        ownerToCarIds[msg.sender].push(nextCarId);
-        emit CarListed(nextCarId, msg.sender, _model, _plate, _pricePerHour);
+    ownerToCarIds[msg.sender].push(nextCarId);
+    emit CarListed(nextCarId, msg.sender, _model, _plate, _pricePerHour);
 
-        nextCarId++;
-    }
+    nextCarId++;
+}
+
 
     /// 車主下架車輛
     function setCarAvailability(uint256 _carId, bool _isOnline) external {
@@ -157,16 +161,16 @@ contract DecentralizedCarRental {
         );
         require(rent.isActive, "No active rental");
 
-        if (!rent.extraFeePaid) {
-        require(msg.sender == rent.renter, "Renter need to pay");
-        }
-        
         // 未超時即設定為已付款
         if (overtimeHours == 0) {
             rent.extraFeePaid = true;
             if (msg.value > 0) {
             payable(msg.sender).transfer(msg.value);
         }
+        }
+
+        if (!rent.extraFeePaid) {
+        require(msg.sender == rent.renter, "Renter need to pay extra fee");
         }
 
         // 如果有超時且未付款，要求付款
