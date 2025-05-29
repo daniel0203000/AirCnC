@@ -37,7 +37,6 @@ contract DecentralizedCarRental {
     mapping(address => uint256[]) public ownerToCarIds; 
     mapping(uint256 => RentalInfo) public rentalDetails; 
     mapping(address => uint256[]) public renterToCarIds; 
-    mapping(uint256 => uint256) public rentToCarId; 
 
     event CarListed(uint256 carId, address indexed owner, string model, string plate, uint256 pricePerHour);
     event Caroffline(uint256 carId);
@@ -126,7 +125,6 @@ contract DecentralizedCarRental {
 
         rentalDetails[_carId] = rentals[_carId];
         renterToCarIds[msg.sender].push(_carId); 
-        rentToCarId[_carId] = _carId; 
         car.status = 2;
         emit CarRented(_carId, msg.sender, rentstart, rentend, totalCost);
     }
