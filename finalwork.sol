@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 contract DecentralizedCarRental {
 
     uint256 public nextCarId;
-    uint256 public nextRentalId;
 
     struct Car {
         uint256 carId;
@@ -16,13 +15,13 @@ contract DecentralizedCarRental {
         uint256 pricePerHour;
         uint256 fdcanstart;
         uint256 ldcanstart;
-        bool isOnline;
+        uint256 status;   // 1: 可出租, 2: 已被預約, 3: 正在出租, 4: 結束租約, 5: 下架
         string imageURL;
         string phone;     
     }
 
     struct RentalInfo {
-        uint256 rentalId;
+        uint256 carId;    
         address payable renter;
         uint256 startTimestamp;
         uint256 endTimestamp;
@@ -32,29 +31,25 @@ contract DecentralizedCarRental {
         bool ownerConfirmed;
         bool extraFeePaid;
     }
+    
+    mapping(uint256 => Car) public cars;       
+    mapping(uint256 => RentalInfo) public rentals;  
+    mapping(address => uint256[]) public ownerToCarIds; 
+    mapping(uint256 => RentalInfo) public rentalDetails; 
+    mapping(address => uint256[]) public renterToCarIds; 
+    mapping(uint256 => uint256) public rentToCarId; 
 
-    mapping(uint256 => Car) public cars;       // 車輛資料
-    mapping(uint256 => RentalInfo) public rentals;  // 租借紀錄
-    mapping(address => uint256[]) public ownerToCarIds; // 車主擁有的車輛 IDs
-    mapping(uint256 => RentalInfo) public rentalDetails; // 租約 ID 對應租借詳情
-    mapping(uint256 => uint256) public carIdToRentalId;  // 車 ID 對應最新的租約 ID
-    mapping(address => uint256[]) public renterToRentalIds; // 租客擁有的租借 IDs
-    mapping(uint256 => uint256) public rentToCarId;
-
-    // 事件
     event CarListed(uint256 carId, address indexed owner, string model, string plate, uint256 pricePerHour);
-    event CarAvailabilityUpdated(uint256 carId, bool isOnline);
+    event Caroffline(uint256 carId);
     event CarRented(uint256 carId, address indexed renter, uint256 rentstart, uint256 rentend, uint256 totalCost);
     event RentalStart(uint256 carId, address indexed renter);
     event RentalEnded(uint256 carId, address indexed renter);
     event ExtraCharged(uint256 carId, address renter, uint256 extraHours, uint256 extraCost);
-    event RentalCancelled(uint256 rentalId, address indexed renter, uint256 refundedAmount);
+    event RentalCancelled(uint256 carId, address indexed renter, uint256 refundedAmount);
 
-    // -------------------
     // 車主功能
-    // -------------------
 
-    /// 車主上架車輛
+    // 上傳車輛
     function addCar(
         bool _isscooter,
         string memory _locate,
@@ -79,7 +74,7 @@ contract DecentralizedCarRental {
                 fdcanstart: _fdcanstart,
                 ldcanstart: _ldcanstart,
                 pricePerHour: _pricePerHour,
-                isOnline: true,
+                status: 1,
                 imageURL: _imageURL,
                 phone: _phone
             });
@@ -89,42 +84,36 @@ contract DecentralizedCarRental {
         nextCarId++;
     }
 
-
-    /// 車主下架車輛
-    function setCarAvailability(uint256 _carId, bool _isOnline) external {
+    // 下架車輛
+    function setCarAvailability(uint256 _carId) external {
         Car storage car = cars[_carId];
+        require(car.status == 1, "Can't change your car status");
         require(car.owner == msg.sender, "Not the car owner");
-        car.isOnline = _isOnline;
-        emit CarAvailabilityUpdated(_carId, _isOnline);
+        car.status = 5;
+        emit Caroffline(_carId);
     }
 
-    // -------------------
     // 租客功能
-    // -------------------
 
-    /// 租客租借車輛
-    function rentCar(uint256 _carId, uint256 totalCost, uint256 rentstart, uint256 rentend) external payable{
+    // 租車
+    function rentCar(uint256 _carId, uint256 totalCost, uint256 rentstart, uint256 rentend) external payable {
         Car storage car = cars[_carId];
-        require(car.isOnline, "Car is not available");
+        require(car.status == 1, "Car is not available");
         require(car.owner != msg.sender, "Owner cannot rent own car");
         require(totalCost >= car.pricePerHour, "Must rent for at least 1 hour");
-        require(car.fdcanstart<=rentstart, "car can not be rented");
-        require(car.ldcanstart>=rentend, "over the last day can rent");
         require(msg.value >= totalCost, "Insufficient ETH sent");
 
-        uint256 currentRentalId = nextRentalId;
-
-        // 如果付多了就退還多餘的金額
+        // 退還超過的費用
         uint256 overpaid = msg.value - totalCost;
         if (overpaid > 0) {
             payable(msg.sender).transfer(overpaid);
         }
 
-        // 轉帳租金給車主
+        // 轉帳
         car.owner.transfer(totalCost);
 
         rentals[_carId] = RentalInfo({
-            rentalId: currentRentalId,
+            carId: _carId, 
             renter: payable(msg.sender),
             startTimestamp: rentstart,
             endTimestamp: rentend,
@@ -135,18 +124,16 @@ contract DecentralizedCarRental {
             extraFeePaid: false
         });
 
-        rentalDetails[currentRentalId] = rentals[_carId];
-        carIdToRentalId[_carId] = currentRentalId;
-        renterToRentalIds[msg.sender].push(currentRentalId);
-        rentToCarId[nextRentalId] = _carId;
-        nextRentalId++;
-        car.isOnline=false;
+        rentalDetails[_carId] = rentals[_carId];
+        renterToCarIds[msg.sender].push(_carId); 
+        rentToCarId[_carId] = _carId; 
+        car.status = 2;
         emit CarRented(_carId, msg.sender, rentstart, rentend, totalCost);
     }
 
-    // 取消租約並退款
-    function cancelRental(uint256 _rentalId) external {
-        RentalInfo storage rent = rentalDetails[_rentalId];
+    // 取消租約
+    function cancelRental(uint256 _carId) external {
+        RentalInfo storage rent = rentalDetails[_carId];
 
         require(rent.renter == msg.sender, "Only renter can cancel");
         require(!rent.isActive, "Rental already started");
@@ -157,19 +144,16 @@ contract DecentralizedCarRental {
         rent.ftotalCost = 0; 
         payable(msg.sender).transfer(refundAmount);
 
-        // 設為無效
+        // 重置
         rent.startTimestamp = 0;
         rent.endTimestamp = 0;
         rent.renter = payable(address(0));
 
-        uint256 carId = rentToCarId[_rentalId];
-        cars[carId].isOnline = true;
-
-        // emit event for cancellation
-        emit RentalCancelled(_rentalId, msg.sender, refundAmount);
+        cars[_carId].status = 1;
+        emit RentalCancelled(_carId, msg.sender, refundAmount);
     }
 
-    /// 車主或租客雙方確認開始租借
+    // 確認開始租車
     function startRental(uint256 _carId) external {
         RentalInfo storage rent = rentals[_carId];
         Car storage car = cars[_carId];
@@ -178,55 +162,52 @@ contract DecentralizedCarRental {
             msg.sender == car.owner || msg.sender == rent.renter,
             "Only renter or owner can confirm start"
         );
+        require(car.status == 2, "Car has not been rented");
 
-        // 各自紀錄確認狀態
+        // 更改狀態
         if (msg.sender == rent.renter) {
             rent.renterConfirmed = true;
         } else if (msg.sender == car.owner) {
             rent.ownerConfirmed = true;
         }
 
-        // 當雙方都確認，正式開始租借
+        // 若雙方都確認即開始
         if (rent.renterConfirmed && rent.ownerConfirmed) {
             rent.isActive = true;
+            car.status = 3;
             emit RentalStart(_carId, rent.renter);
         }
     }
 
-    // 結束租約且確認是否收取超時費用
+    // 結束租約並計算超時費用
     function endRental(uint256 _carId, uint256 overtimeHours) external payable {
         RentalInfo storage rent = rentals[_carId];
         Car storage car = cars[_carId];
-
-        require(
-            msg.sender == car.owner || msg.sender == rent.renter,
-            "Only renter or owner can confirm return"
-        );
+        require(car.status == 3, "Car is not currently rented");
+        require(msg.sender == car.owner || msg.sender == rent.renter,"Only renter or owner can confirm return");
         require(rent.isActive, "No active rental");
 
-        // 未超時即設定為已付款
+        // 若沒有超時即為已付款
         if (overtimeHours == 0) {
             rent.extraFeePaid = true;
             if (msg.value > 0) {
-            payable(msg.sender).transfer(msg.value);
-        }
+                payable(msg.sender).transfer(msg.value);
+            }
         }
 
         if (!rent.extraFeePaid) {
-        require(msg.sender == rent.renter, "Renter need to pay extra fee");
+            require(msg.sender == rent.renter, "Renter needs to pay extra fee");
         }
 
-        // 如果有超時且未付款，要求付款
+        // 支付費用
         if (overtimeHours > 0 && !rent.extraFeePaid) {
             uint256 extraCost = overtimeHours * car.pricePerHour;
             require(msg.value >= extraCost, "Insufficient ETH for overtime");
-            // 如果付超過，退還
             uint256 refund = msg.value - extraCost;
             if (refund > 0) {
                 payable(msg.sender).transfer(refund);
             }
-
-            // 將超時費轉給車主
+            // 轉帳
             car.owner.transfer(extraCost);
 
             rent.ftotalCost += extraCost;
@@ -234,71 +215,65 @@ contract DecentralizedCarRental {
             emit ExtraCharged(_carId, rent.renter, overtimeHours, extraCost);
         }
 
-        // 記錄雙方按確認
+        // 確認雙方都確認好即為還車成功
         if (msg.sender == rent.renter) {
             rent.renterConfirmed = false;
         } else if (msg.sender == car.owner) {
             rent.ownerConfirmed = false;
         }
-
         if (!rent.renterConfirmed && !rent.ownerConfirmed && rent.extraFeePaid) {
             rent.isActive = false;
+            car.status = 4;
             emit RentalEnded(_carId, rent.renter);
         }
-        car.isOnline=true;
     }
 
     // -------------------
     // 查詢功能
     // -------------------
 
-    // 取得某個車主的所有車
+    // 車主取得自己的所有車輛
     function getMyCars() external view returns (Car[] memory) {
         uint256[] memory myCarIds = ownerToCarIds[msg.sender];
         Car[] memory myCars = new Car[](myCarIds.length);
-
         for (uint256 i = 0; i < myCarIds.length; i++) {
             myCars[i] = cars[myCarIds[i]];
         }
         return myCars;
     }
 
-    /// 取得某輛車的詳細資料
+    /// 車輛細節
     function getCar(uint256 _carId) external view returns (Car memory) {
         return cars[_carId];
     }
 
-    /// 取得租借資訊
-    function getRentalById(uint256 _rentalId) external view returns (RentalInfo memory) {
-        return rentalDetails[_rentalId];
+    /// 透過車子id查詢租約細節
+    function getRentalById(uint256 _carId) external view returns (RentalInfo memory) {
+        return rentalDetails[_carId];
     }
 
-    ///租車人取得自己的租約資訊
+    /// 租客查詢自己的所有租約資訊
     function getMyRentals() external view returns (RentalInfo[] memory) {
-        uint256[] memory rentalIds = renterToRentalIds[msg.sender];
-        RentalInfo[] memory myRentals = new RentalInfo[](rentalIds.length);
-
-        for (uint256 i = 0; i < rentalIds.length; i++) {
-            myRentals[i] = rentalDetails[rentalIds[i]];
+        uint256[] memory carIds = renterToCarIds[msg.sender];
+        RentalInfo[] memory myRentals = new RentalInfo[](carIds.length);
+        for (uint256 i = 0; i < carIds.length; i++) {
+            myRentals[i] = rentalDetails[carIds[i]];
         }
         return myRentals;
     }
 
-    /// 查詢可租借的車 ID
+    /// 查詢所有可租車輛
     function getAvailableCars() external view returns (uint256[] memory) {
         uint256 availableCount = 0;
-
         for (uint256 i = 0; i < nextCarId; i++) {
-            if (cars[i].isOnline) {
+            if (cars[i].status == 1) {
                 availableCount++;
             }
         }
-
         uint256[] memory result = new uint256[](availableCount);
         uint256 index = 0;
-
         for (uint256 i = 0; i < nextCarId; i++) {
-            if (cars[i].isOnline) {
+            if (cars[i].status == 1) {
                 result[index] = i;
                 index++;
             }
