@@ -278,4 +278,79 @@ contract DecentralizedCarRental {
         }
         return result;
     }
+
+    /// 查詢已被預約車輛
+    function getstatus2() external view returns (uint256[] memory) {
+        uint256 status2 = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 2) {
+                status2++;
+            }
+        }
+        uint256[] memory result = new uint256[](status2);
+        uint256 index = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 2) {
+                result[index] = i;
+                index++;
+            }
+        }
+        return result;
+    }
+
+    /// 查詢正在出租車輛
+    function getstatus3() external view returns (uint256[] memory) {
+        uint256 status3 = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 3) {
+                status3++;
+            }
+        }
+        uint256[] memory result = new uint256[](status3);
+        uint256 index = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 3) {
+                result[index] = i;
+                index++;
+            }
+        }
+        return result;
+    }
+
+    /// 查詢結束出租車輛(歷史租借)
+    function getstatus4() external view returns (uint256[] memory) {
+        uint256 status4 = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 4) {
+                status4++;
+            }
+        }
+        uint256[] memory result = new uint256[](status4);
+        uint256 index = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 4) {
+                result[index] = i;
+                index++;
+            }
+        }
+        return result;
+    }
+    /// 查詢被下架車輛
+    function getstatus5() external view returns (uint256[] memory) {
+        uint256 status5 = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 5) {
+                status5++;
+            }
+        }
+        uint256[] memory result = new uint256[](status5);
+        uint256 index = 0;
+        for (uint256 i = 0; i < nextCarId; i++) {
+            if (cars[i].status == 5) {
+                result[index] = i;
+                index++;
+            }
+        }
+        return result;
+    }
 }
