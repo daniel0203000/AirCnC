@@ -9,15 +9,15 @@ contract DecentralizedCarRental {
         uint256 carId;
         bool isscooter;
         address payable owner;
-        string locate;     
-        bytes model;
-        bytes plate;           
-        uint256 pricePerHour;   
-        uint32 fdcanstart;     
-        uint32 ldcanstart;     
-        uint8 status;          
-        bytes imageURL;        
-        bytes phone;           
+        string locate;
+        string model;
+        string plate;
+        uint256 pricePerHour;
+        uint32 fdcanstart;
+        uint32 ldcanstart;
+        uint8 status;
+        string imageURL;
+        string phone;
     }
     //租約細節結構
     struct RentalInfo {
@@ -38,29 +38,49 @@ contract DecentralizedCarRental {
     mapping(address => uint256[]) public renterToCarIds;
     mapping(address => uint256) public ownerBalances;
 
-    event CarListed(uint256 carId, address indexed owner, bytes model, bytes plate, uint256 pricePerHour);
+    event CarListed(
+        uint256 carId,
+        address indexed owner,
+        string model,
+        string plate,
+        uint256 pricePerHour
+    );
     event Caroffline(uint256 carId);
-    event CarRented(uint256 carId, address indexed renter, uint64 rentstart, uint64 rentend, uint256 totalCost);
+    event CarRented(
+        uint256 carId,
+        address indexed renter,
+        uint64 rentstart,
+        uint64 rentend,
+        uint256 totalCost
+    );
     event RentalStart(uint256 carId, address indexed renter);
     event RentalEnded(uint256 carId, address indexed renter);
-    event ExtraCharged(uint256 carId, address renter, uint64 extraHours, uint256 extraCost);
-    event RentalCancelled(uint256 carId, address indexed renter, uint256 refundedAmount);
+    event ExtraCharged(
+        uint256 carId,
+        address renter,
+        uint64 extraHours,
+        uint256 extraCost
+    );
+    event RentalCancelled(
+        uint256 carId,
+        address indexed renter,
+        uint256 refundedAmount
+    );
 
     /*車主功能*/
     //上傳車輛
     function addCar(
         bool _isscooter,
         string memory _locate,
-        bytes memory _model,
-        bytes memory _plate,
+        string memory _model,
+        string memory _plate,
         uint256 _pricePerHour,
         uint32 _fdcanstart,
         uint32 _ldcanstart,
-        bytes memory _imageURL,
-        bytes memory _phone
+        string memory _imageURL,
+        string memory _phone
     ) external {
         require(_pricePerHour > 0, "Price must be greater than zero");
-
         cars[nextCarId] = Car({
             carId: nextCarId,
             isscooter: _isscooter,
@@ -92,7 +112,12 @@ contract DecentralizedCarRental {
 
     /*租客功能*/
     //租車功能
-    function rentCar(uint256 _carId, uint256 totalCost, uint64 rentstart, uint64 rentend) external payable {
+    function rentCar(
+        uint256 _carId,
+        uint256 totalCost,
+        uint64 rentstart,
+        uint64 rentend
+    ) external payable {
         Car storage car = cars[_carId];
         require(car.status == 1, "Car is not available");
         require(car.owner != msg.sender, "Owner cannot rent own car");
@@ -130,8 +155,14 @@ contract DecentralizedCarRental {
 
         require(rent.renter == msg.sender, "Only renter can cancel");
         require(!rent.isActive, "Rental already started");
-        require(rent.ftotalCost > 0, "Rental already cancelled or does not exist");
-        require(ownerBalances[car.owner] >= rent.ftotalCost, "Owner has insufficient balance for refund");
+        require(
+            rent.ftotalCost > 0,
+            "Rental already cancelled or does not exist"
+        );
+        require(
+            ownerBalances[car.owner] >= rent.ftotalCost,
+            "Owner has insufficient balance for refund"
+        );
 
         uint256 refundAmount = rent.ftotalCost;
         ownerBalances[car.owner] -= refundAmount;
@@ -176,7 +207,10 @@ contract DecentralizedCarRental {
         RentalInfo storage rent = rentals[_carId];
         Car storage car = cars[_carId];
         require(car.status == 3, "Car is not currently rented");
-        require(msg.sender == car.owner || msg.sender == rent.renter, "Only renter or owner can confirm return");
+        require(
+            msg.sender == car.owner || msg.sender == rent.renter,
+            "Only renter or owner can confirm return"
+        );
         require(rent.isActive, "No active rental");
 
         if (overtimeHours == 0) {
@@ -210,12 +244,17 @@ contract DecentralizedCarRental {
             rent.ownerConfirmed = false;
         }
 
-        if (!rent.renterConfirmed && !rent.ownerConfirmed && rent.extraFeePaid) {
+        if (
+            !rent.renterConfirmed && !rent.ownerConfirmed && rent.extraFeePaid
+        ) {
             rent.isActive = false;
             car.status = 4;
 
             uint256 totalPayment = rent.ftotalCost;
-            require(address(this).balance >= totalPayment, "Contract has insufficient balance");
+            require(
+                address(this).balance >= totalPayment,
+                "Contract has insufficient balance"
+            );
             ownerBalances[car.owner] -= totalPayment;
             car.owner.transfer(totalPayment);
 
