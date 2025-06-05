@@ -166,13 +166,19 @@ contract DecentralizedCarRental {
 
         uint256 refundAmount = rent.ftotalCost;
         ownerBalances[car.owner] -= refundAmount;
-        rent.ftotalCost = 0;
+        delete rentals[_carId];
+
+        //移除資料
+        uint256[] storage carIds = renterToCarIds[msg.sender];
+        for (uint256 i = 0; i < carIds.length; i++) {
+            if (carIds[i] == _carId) {
+                carIds[i] = carIds[carIds.length - 1];
+                carIds.pop();
+                break;
+            }
+        }
+
         payable(msg.sender).transfer(refundAmount);
-
-        rent.startTimestamp = 0;
-        rent.endTimestamp = 0;
-        rent.renter = payable(address(0));
-
         car.status = 1;
         emit RentalCancelled(_carId, msg.sender, refundAmount);
     }
