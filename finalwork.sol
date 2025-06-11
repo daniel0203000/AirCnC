@@ -38,33 +38,37 @@ contract DecentralizedCarRental {
     mapping(address => uint256[]) public renterToCarIds;
     mapping(address => uint256) public ownerBalances;
 
-    event CarListed(
-        uint256 carId,
-        address indexed owner,
-        string model,
-        string plate,
-        uint256 pricePerHour
-    );
-    event Caroffline(uint256 carId);
+    event CarListed(uint256 carId, address indexed owner, bool isscooter);
     event CarRented(
         uint256 carId,
         address indexed renter,
-        uint64 rentstart,
-        uint64 rentend,
-        uint256 totalCost
+        address indexed owner
     );
-    event RentalStart(uint256 carId, address indexed renter);
-    event RentalEnded(uint256 carId, address indexed renter);
+    event RentalStart(
+        uint256 carId,
+        address indexed renter,
+        address indexed owner
+    );
+    event RentalEnded(
+        uint256 carId,
+        address indexed renter,
+        address indexed owner
+    );
     event ExtraCharged(
         uint256 carId,
         address renter,
-        uint64 extraHours,
+        address indexed owner,
         uint256 extraCost
     );
     event RentalCancelled(
         uint256 carId,
         address indexed renter,
-        uint256 refundedAmount
+        address indexed owner
+    );
+    event Renterreturn(
+        uint256 carId,
+        address indexed renter,
+        address indexed owner
     );
 
     /*車主功能*/
@@ -97,7 +101,7 @@ contract DecentralizedCarRental {
         });
 
         ownerToCarIds[msg.sender].push(nextCarId);
-        emit CarListed(nextCarId, msg.sender, _model, _plate, _pricePerHour);
+        emit CarListed(nextCarId, msg.sender, _isscooter);
 
         nextCarId++;
     }
@@ -107,7 +111,6 @@ contract DecentralizedCarRental {
         require(car.status == 1, "Can't change your car status");
         require(car.owner == msg.sender, "Not the car owner");
         car.status = 5;
-        emit Caroffline(_carId);
     }
 
     /*租客功能*/
@@ -145,7 +148,7 @@ contract DecentralizedCarRental {
 
         renterToCarIds[msg.sender].push(_carId);
         car.status = 2;
-        emit CarRented(_carId, msg.sender, rentstart, rentend, totalCost);
+        emit CarRented(_carId, msg.sender, car.owner);
     }
 
     //取消租車
@@ -180,7 +183,7 @@ contract DecentralizedCarRental {
 
         payable(msg.sender).transfer(refundAmount);
         car.status = 1;
-        emit RentalCancelled(_carId, msg.sender, refundAmount);
+        emit RentalCancelled(_carId, msg.sender, car.owner);
     }
 
     /*雙方功能*/
@@ -204,7 +207,7 @@ contract DecentralizedCarRental {
         if (rent.renterConfirmed && rent.ownerConfirmed) {
             rent.isActive = true;
             car.status = 3;
-            emit RentalStart(_carId, rent.renter);
+            emit RentalStart(_carId, rent.renter, car.owner);
         }
     }
 
@@ -241,11 +244,12 @@ contract DecentralizedCarRental {
 
             rent.ftotalCost += extraCost;
             rent.extraFeePaid = true;
-            emit ExtraCharged(_carId, rent.renter, overtimeHours, extraCost);
+            emit ExtraCharged(_carId, rent.renter, car.owner, extraCost);
         }
 
         if (msg.sender == rent.renter) {
             rent.renterConfirmed = false;
+            emit Renterreturn(_carId, rent.renter, car.owner);
         } else if (msg.sender == car.owner) {
             rent.ownerConfirmed = false;
         }
@@ -264,7 +268,7 @@ contract DecentralizedCarRental {
             ownerBalances[car.owner] -= totalPayment;
             car.owner.transfer(totalPayment);
 
-            emit RentalEnded(_carId, rent.renter);
+            emit RentalEnded(_carId, rent.renter, car.owner);
         }
     }
 
